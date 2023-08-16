@@ -620,9 +620,11 @@ func (g *Generator) SetPackageNames() {
 	// Register the support package names. They might collide with the
 	// name of a package we import.
 	g.Pkg = map[string]string{
-		"json":  RegisterUniquePackageName("json", nil),
-		"math":  RegisterUniquePackageName("math", nil),
-		"proto": RegisterUniquePackageName("proto", nil),
+		"json":   RegisterUniquePackageName("json", nil),
+		"math":   RegisterUniquePackageName("math", nil),
+		"proto":  RegisterUniquePackageName("proto", nil),
+		"fmt":    RegisterUniquePackageName("fmt", nil),
+		"errors": RegisterUniquePackageName("errors", nil),
 	}
 
 AllFiles:
@@ -1102,6 +1104,9 @@ func (g *Generator) generateImports() {
 	g.P("import " + g.Pkg["proto"] + " " + strconv.Quote(g.ImportPrefix+"code.google.com/p/goprotobuf/proto"))
 	g.P("import " + g.Pkg["json"] + ` "encoding/json"`)
 	g.P("import " + g.Pkg["math"] + ` "math"`)
+	g.P("import " + g.Pkg["fmt"] + ` "fmt"`)
+	g.P("import " + g.Pkg["errors"] + ` "errors"`)
+
 	for i, s := range g.file.Dependency {
 		fd := g.fileByName(s)
 		// Do not import our own package.
@@ -1141,6 +1146,8 @@ func (g *Generator) generateImports() {
 	g.P("var _ = ", g.Pkg["proto"], ".Marshal")
 	g.P("var _ = &", g.Pkg["json"], ".SyntaxError{}")
 	g.P("var _ = ", g.Pkg["math"], ".Inf")
+	g.P("var _ = ", g.Pkg["errors"], ".New(\"\")")
+	g.P("var _ = ", g.Pkg["fmt"], ".Errorf")
 	g.P()
 }
 
@@ -1240,7 +1247,35 @@ func (g *Generator) generateEnum(enum *EnumDescriptor) {
 	g.Out()
 	g.P("}")
 
-	g.P()
+	// We want to generate MarshalJSON if comments contain following tag
+	// "enum: ". go-protobuf does not generate MarshalJSON for enum. Therefore,
+	// enum values get marshalled into int32 (which is the type for the enum).
+	// In order to marshal values into readable string, we need to generate
+	// MarshalJSON function.  However, we don't want to do it unconditionally in
+	// order to maintain backward compatibility until older code is migrated.
+
+	// Get comments.
+	lastCommentLine := ""
+	if loc, ok := g.file.comments[enum.path]; ok {
+		comments := strings.Split(
+			strings.TrimSuffix(loc.GetLeadingComments(), "\n"), "\n")
+		lastCommentLine = comments[len(comments)-1]
+	}
+
+	// If comments contain enum: tag, generate MarshalJSON.
+	if strings.Contains(lastCommentLine, "enum: ") {
+		g.P("func (x *", ccTypeName, ") MarshalJSON()([]byte, error) {")
+		g.In()
+		g.P("if enumStr, valid := ", ccTypeName, "_name[int32(*x)]; valid {")
+		g.In()
+		g.P("return json.Marshal(enumStr)")
+		g.Out()
+		g.P("}")
+		g.P("return nil, errors.New(fmt.Sprintf(\"Unknown " + ccTypeName + " Type %d\", int32(*x)))")
+		g.Out()
+		g.P("}")
+	}
+
 }
 
 // The tag is a string like "varint,2,opt,name=fieldname,def=7" that
@@ -1472,7 +1507,7 @@ func (g *Generator) generateMessage(message *Descriptor) {
 		fieldGetterName := fieldName
 		usedNames[fieldName] = true
 		typename, wiretype := g.GoType(message, field)
-		jsonName := *field.Name
+		jsonName := makeFirstLetterLowerCase(fieldName)
 		tag := fmt.Sprintf("protobuf:%s json:%q", g.goTag(field, wiretype), jsonName+",omitempty")
 		fieldNames[field] = fieldName
 		fieldGetterNames[field] = fieldGetterName
@@ -1860,6 +1895,16 @@ func CamelCase(s string) string {
 		}
 	}
 	return string(t)
+}
+
+// makeFirstLetterLowerCase makes the first letter of the string as lowercase.
+func makeFirstLetterLowerCase(str string) string {
+	runes := []rune(str)
+	if len(runes) > 0 {
+		runes[0] = unicode.ToLower(runes[0])
+		return string(runes)
+	}
+	return str
 }
 
 // CamelCaseSlice is like CamelCase, but the argument is a slice of strings to
