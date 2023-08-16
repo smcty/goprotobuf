@@ -100,9 +100,9 @@ for a protocol buffer variable v:
 Consider file test.proto, containing
 
 	package example;
-	
+
 	enum FOO { X = 17; };
-	
+
 	message Test {
 	  required string label = 1;
 	  optional int32 type = 2 [default=77];
@@ -146,3 +146,15 @@ To create and play with a Test object from the example package,
 		}
 		// etc.
 	}
+
+##############################################################################
+generator.go has been modified to generate json tag for fields in a struct as
+camel case starting with a lower case letter. For example,
+"optional BackupScheduleProto override_backup_schedule = 2;"
+will be generated as :-
+"OverrideBackupSchedule *BackupScheduleProto `protobuf:"bytes,2,opt,
+name=override_backup_schedule" json:"overrideBackupSchedule,omitempty"`".
+Without the modification, the json tag would be genrated as
+json:"override_backup_schedule". We want the JSON to be camel case starting
+with a lower case letter in REST APIs.
+##############################################################################
