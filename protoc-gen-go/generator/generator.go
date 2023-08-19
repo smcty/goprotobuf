@@ -373,6 +373,11 @@ func (es enumSymbol) GenerateAlias(g *Generator, pkg GoPackageName) {
 	g.P("type ", s, " = ", pkg, ".", s)
 	g.P("var ", s, "_name = ", pkg, ".", s, "_name")
 	g.P("var ", s, "_value = ", pkg, ".", s, "_value")
+	g.P("func (x ", s, ") String() string { return (", pkg, ".", s, ")(x).String() }")
+  //if !es.proto3 {
+		g.P("func (x ", s, ") Enum() *", s, "{ return (*", s, ")((", pkg, ".", s, ")(x).Enum()) }")
+		g.P("func (x *", s, ") UnmarshalJSON(data []byte) error { return (*", pkg, ".", s, ")(x).UnmarshalJSON(data) }")
+  //}
 }
 
 type constOrVarSymbol struct {
@@ -1145,9 +1150,9 @@ func (g *Generator) generate(file *FileDescriptor) {
 	}
 	for _, desc := range g.file.desc {
 		// Don't generate virtual messages for maps.
-		if desc.GetOptions().GetMapEntry() {
-			continue
-		}
+    //if desc.GetOptions().GetMapEntry() {
+    // continue
+    //}
 		g.generateMessage(desc)
 	}
 	for _, ext := range g.file.ext {
@@ -1427,7 +1432,7 @@ func (g *Generator) generateEnum(enum *EnumDescriptor) {
 	g.Out()
 	g.P("}")
 
-	if !enum.proto3() {
+  //if !enum.proto3() {
 		g.P("func (x ", ccTypeName, ") Enum() *", ccTypeName, " {")
 		g.In()
 		g.P("p := new(", ccTypeName, ")")
@@ -1435,7 +1440,7 @@ func (g *Generator) generateEnum(enum *EnumDescriptor) {
 		g.P("return p")
 		g.Out()
 		g.P("}")
-	}
+  //}
 
 	g.P("func (x ", ccTypeName, ") String() string {")
 	g.In()
@@ -1443,7 +1448,8 @@ func (g *Generator) generateEnum(enum *EnumDescriptor) {
 	g.Out()
 	g.P("}")
 
-	if !enum.proto3() {
+  // Generate unmarshal method for proto3 enum for backwards compat.
+  //if !enum.proto3() {
 		g.P("func (x *", ccTypeName, ") UnmarshalJSON(data []byte) error {")
 		g.In()
 		g.P("value, err := ", g.Pkg["proto"], ".UnmarshalJSONEnum(", ccTypeName, `_value, data, "`, ccTypeName, `")`)
@@ -1456,7 +1462,7 @@ func (g *Generator) generateEnum(enum *EnumDescriptor) {
 		g.P("return nil")
 		g.Out()
 		g.P("}")
-	}
+  //}
 
 	var indexes []string
 	for m := enum.parent; m != nil; m = m.parent {
@@ -1973,6 +1979,42 @@ func (g *Generator) generateMessage(message *Descriptor) {
 		g.P("func (*", ccTypeName, `) XXX_WellKnownType() string { return "`, message.GetName(), `" }`)
 	}
 
+  if message.GetOptions().GetMapEntry() {
+    // Figure out the Go types and tags for the key and value types.
+    keyField, valField := message.Field[0], message.Field[1]
+    keyType, _ := g.GoType(message, keyField)
+    valType, _ := g.GoType(message, valField)
+
+    // We don't use stars, except for message-typed values.
+    if *valField.Type != descriptor.FieldDescriptorProto_TYPE_MESSAGE {
+      valType = strings.TrimPrefix(valType, "*")
+    }
+
+    mapTypename := fmt.Sprintf("map[%s]%s", strings.TrimPrefix(keyType, "*"),
+      valType)
+
+    g.P("func ", ccTypeName, "_ToMap(l []*", ccTypeName, ") ", mapTypename,
+      "{")
+
+    g.P("result := make(", mapTypename, ")")
+    g.P("for _, entry := range l {")
+    g.P("if l != nil {")
+
+    keyIsPointer := strings.HasPrefix(keyType, "*")
+    var entryKeyAccessorStr string
+    if keyIsPointer {
+      entryKeyAccessorStr = "result[entry.GetKey()]"
+    } else {
+      entryKeyAccessorStr = "result[entry.Key]"
+    }
+
+    g.P(entryKeyAccessorStr, " = entry.GetValue()")
+
+    g.P("}}")
+
+    g.P("return result")
+    g.P("}")
+  }
 	// Extension support methods
 	var hasExtensions, isMessageSet bool
 	if len(message.ExtensionRange) > 0 {
