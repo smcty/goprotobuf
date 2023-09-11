@@ -3,7 +3,7 @@
 
 package jsonpb
 
-import proto "github.com/golang/protobuf/proto"
+import proto "code.google.com/p/goprotobuf/proto"
 import fmt "fmt"
 import math "math"
 

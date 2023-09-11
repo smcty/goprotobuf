@@ -3,11 +3,11 @@
 
 package proto3_proto
 
-import proto "github.com/golang/protobuf/proto"
+import proto "code.google.com/p/goprotobuf/proto"
 import fmt "fmt"
 import math "math"
-import test_proto "github.com/golang/protobuf/proto/test_proto"
-import any "github.com/golang/protobuf/ptypes/any"
+import test_proto "code.google.com/p/goprotobuf/proto/test_proto"
+import any "code.google.com/p/goprotobuf/ptypes/any"
 
 // Reference imports to suppress errors if they are not otherwise used.
 var _ = proto.Marshal
