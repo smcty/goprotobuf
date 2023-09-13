@@ -2213,8 +2213,6 @@ func (g *Generator) generateMessage(message *Descriptor) {
 			g.P(deprecationComment)
 		}
 
-		g.P("func (m *", ccTypeName, ") ", Annotate(message.file, fieldFullPath, mname), "() "+typename+" {")
-		g.In()
 		def, hasDef := defNames[field]
 		typeDefaultIsNil := false // whether this field type's default value is a literal nil unless specified
 		switch *field.Type {
@@ -2226,6 +2224,25 @@ func (g *Generator) generateMessage(message *Descriptor) {
 		if isRepeated(field) {
 			typeDefaultIsNil = true
 		}
+
+		if !typeDefaultIsNil && oneof {
+			g.P("func (m *", ccTypeName, ") ", Annotate(message.file,
+				fieldFullPath, mname+"Ptr"), "() *"+typename+" {")
+			g.In()
+			g.P("if m == nil { return nil }")
+			uname := oneofFieldName[*field.OneofIndex]
+			tname := oneofTypeName[field]
+			g.P("if m.Get", uname, "() == nil { return nil }")
+			g.P("if x, ok := m.Get", uname, "().(*", tname, "); ok {")
+			g.P("return &x.", fname)
+			g.P("}")
+			g.P("return nil")
+			g.Out()
+			g.P("}")
+		}
+
+		g.P("func (m *", ccTypeName, ") ", Annotate(message.file, fieldFullPath, mname), "() "+typename+" {")
+		g.In()
 		if typeDefaultIsNil && !oneof {
 			// A bytes field with no explicit default needs less generated code,
 			// as does a message or group field, or a repeated field.
