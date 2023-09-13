@@ -588,6 +588,7 @@ var isGoKeyword = map[string]bool{
 	"switch":      true,
 	"type":        true,
 	"var":         true,
+        "error":       true,
 }
 
 func cleanPackageName(name string) GoPackageName {
