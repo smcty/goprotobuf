@@ -428,7 +428,13 @@ type Generator struct {
 	indent           string
 	pathType         pathType // How to generate output filenames.
 	writeOutput      bool
-	annotateCode     bool                                       // whether to store annotations
+	annotateCode     bool
+
+	// Whether to generate code for registering this proto with the
+	// converter to old style protobuf.
+	generateOldProtoCompat bool
+
+	// whether to store annotations
 	annotations      []*descriptor.GeneratedCodeInfo_Annotation // annotations to store
 }
 
@@ -497,6 +503,10 @@ func (g *Generator) CommandLineParameters(parameter string) {
 		case "annotate_code":
 			if v == "true" {
 				g.annotateCode = true
+			}
+		case "oldproto_compat":
+			if v == "true" {
+				g.generateOldProtoCompat = true
 			}
 		default:
 			if len(k) > 0 && k[0] == 'M' {
@@ -668,9 +678,24 @@ func (g *Generator) SetPackageNames() {
 		"fmt":   "fmt",
 		"math":  "math",
 		"proto": "proto",
-                "json": "json",
-                "errors": "errors",
+		"json": "json",
+    "errors": "errors",
 	}
+	if g.generateOldProtoCompat {
+		g.Pkg["oldstyleproto"] = "oldstyleproto"
+	}
+}
+
+// InferPackagePathForOldStyleProto constructs package path for the
+// old style generated code for this protobuf. Our build system is
+// configured to generate these old style protos at this path.
+func InferPackagePathForOldStyleProto(fileDesc *FileDescriptor) string {
+	name := fileDesc.GetName()
+	if ext := path.Ext(name); ext == ".proto" || ext == ".protodevel" {
+		name = name[:len(name)-len(ext)]
+	}
+	// Old protos are in a directory matching the proto file's relative path.
+	return name + ".pb.old"
 }
 
 // WrapTypes walks the incoming data, wrapping DescriptorProtos, EnumDescriptorProtos
@@ -1160,6 +1185,11 @@ func (g *Generator) generate(file *FileDescriptor) {
 		g.generateExtension(ext)
 	}
 	g.generateInitFunction()
+	if g.generateOldProtoCompat {
+		// Generate an init function that register the messages containing
+		// one_of or map for conversion to old style protobufs.
+		g.generateOldStyleProtoRegistrationFunction()
+	}
 
 	// Run the plugins before the imports so we know which imports are necessary.
 	g.runPlugins(file)
@@ -1301,8 +1331,14 @@ func (g *Generator) generateImports() {
 	g.P("import "+g.Pkg["proto"]+" ", GoImportPath(g.ImportPrefix)+"code.google.com/p/goprotobuf/proto")
 	g.P("import " + g.Pkg["fmt"] + ` "fmt"`)
 	g.P("import " + g.Pkg["math"] + ` "math"`)
-        g.P("import " + g.Pkg["json"] + ` "encoding/json"`)
-        g.P("import " + g.Pkg["errors"] + ` "errors"`)
+  g.P("import " + g.Pkg["json"] + ` "encoding/json"`)
+  g.P("import " + g.Pkg["errors"] + ` "errors"`)
+	if g.generateOldProtoCompat {
+		g.P(
+			"import " + g.Pkg["oldstyleproto"] + strconv.Quote(
+				InferPackagePathForOldStyleProto(g.genFiles[0])))
+	}
+
 	var (
 		imports       = make(map[GoImportPath]bool)
 		strongImports = make(map[GoImportPath]bool)
@@ -1721,6 +1757,7 @@ var methodNames = [...]string{
 	"Reset",
 	"String",
 	"ProtoMessage",
+	"OldStyleCompatSupported",
 	"Marshal",
 	"Unmarshal",
 	"ExtensionRangeArray",
@@ -1965,6 +2002,10 @@ func (g *Generator) generateMessage(message *Descriptor) {
 	g.P("func (m *", ccTypeName, ") Reset() { *m = ", ccTypeName, "{} }")
 	g.P("func (m *", ccTypeName, ") String() string { return ", g.Pkg["proto"], ".CompactTextString(m) }")
 	g.P("func (*", ccTypeName, ") ProtoMessage() {}")
+	if g.generateOldProtoCompat {
+		g.P(
+			"func (*", ccTypeName, ") OldStyleCompatSupported() bool {return true}")
+	}
 	var indexes []string
 	for m := message; m != nil; m = m.parent {
 		indexes = append([]string{strconv.Itoa(m.index)}, indexes...)
@@ -2771,6 +2812,13 @@ func (g *Generator) generateExtension(ext *ExtensionDescriptor) {
 	g.file.addExport(ext, constOrVarSymbol{ccTypeName, "var", ""})
 }
 
+func (g *Generator) generateOldStyleProtoRegistrationFunction() {
+	g.P("func init() {")
+	g.In()
+	g.P("oldstyleproto.InitCohesityOldStyleProtoCompatMapEntries()")
+	g.P("}")
+}
+
 func (g *Generator) generateInitFunction() {
 	for _, enum := range g.file.enum {
 		g.generateEnumRegistration(enum)
@@ -2788,6 +2836,7 @@ func (g *Generator) generateInitFunction() {
 	}
 	g.P("func init() {")
 	g.In()
+
 	for _, l := range g.init {
 		g.P(l)
 	}
