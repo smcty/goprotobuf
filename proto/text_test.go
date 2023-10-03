@@ -1,7 +1,7 @@
 // Go support for Protocol Buffers - Google's data interchange format
 //
 // Copyright 2010 The Go Authors.  All rights reserved.
-// https://code.google.com/p/goprotobuf
+// https://github.com/golang/protobuf
 //
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions are
@@ -40,11 +40,11 @@ import (
 	"sync"
 	"testing"
 
-	"code.google.com/p/goprotobuf/proto"
+	"github.com/golang/protobuf/proto"
 
-	proto3pb "code.google.com/p/goprotobuf/proto/proto3_proto"
-	pb "code.google.com/p/goprotobuf/proto/test_proto"
-	anypb "code.google.com/p/goprotobuf/ptypes/any"
+	proto3pb "github.com/golang/protobuf/proto/proto3_proto"
+	pb "github.com/golang/protobuf/proto/test_proto"
+	anypb "github.com/golang/protobuf/ptypes/any"
 )
 
 // textMessage implements the methods that allow it to marshal and unmarshal

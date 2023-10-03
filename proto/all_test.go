@@ -1,7 +1,7 @@
 // Go support for Protocol Buffers - Google's data interchange format
 //
 // Copyright 2010 The Go Authors.  All rights reserved.
-// https://code.google.com/p/goprotobuf
+// https://github.com/golang/protobuf
 //
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions are
@@ -45,9 +45,9 @@ import (
 	"testing"
 	"time"
 
-	. "code.google.com/p/goprotobuf/proto"
-	pb3 "code.google.com/p/goprotobuf/proto/proto3_proto"
-	. "code.google.com/p/goprotobuf/proto/test_proto"
+	. "github.com/golang/protobuf/proto"
+	pb3 "github.com/golang/protobuf/proto/proto3_proto"
+	. "github.com/golang/protobuf/proto/test_proto"
 )
 
 var globalO *Buffer
@@ -2190,7 +2190,7 @@ func TestOneofNilBytes(t *testing.T) {
 }
 
 func TestInefficientPackedBool(t *testing.T) {
-	// https://code.google.com/p/goprotobuf/issues/76
+	// https://github.com/golang/protobuf/issues/76
 	inp := []byte{
 		0x12, 0x02, // 0x12 = 2<<3|2; 2 bytes
 		// Usually a bool should take a single byte,

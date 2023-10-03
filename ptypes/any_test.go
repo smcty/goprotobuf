@@ -1,7 +1,7 @@
 // Go support for Protocol Buffers - Google's data interchange format
 //
 // Copyright 2016 The Go Authors.  All rights reserved.
-// https://code.google.com/p/goprotobuf
+// https://github.com/golang/protobuf
 //
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions are
@@ -34,9 +34,9 @@ package ptypes
 import (
 	"testing"
 
-	"code.google.com/p/goprotobuf/proto"
-	pb "code.google.com/p/goprotobuf/protoc-gen-go/descriptor"
-	"code.google.com/p/goprotobuf/ptypes/any"
+	"github.com/golang/protobuf/proto"
+	pb "github.com/golang/protobuf/protoc-gen-go/descriptor"
+	"github.com/golang/protobuf/ptypes/any"
 )
 
 func TestMarshalUnmarshal(t *testing.T) {
