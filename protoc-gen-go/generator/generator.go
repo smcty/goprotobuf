@@ -434,6 +434,8 @@ type Generator struct {
 	// converter to old style protobuf.
 	generateOldProtoCompat bool
 
+	foundMessagesWithMapsOrOneOf bool
+
 	// whether to store annotations
 	annotations      []*descriptor.GeneratedCodeInfo_Annotation // annotations to store
 }
@@ -598,7 +600,7 @@ var isGoKeyword = map[string]bool{
 	"switch":      true,
 	"type":        true,
 	"var":         true,
-        "error":       true,
+	"error":       true,
 }
 
 func cleanPackageName(name string) GoPackageName {
@@ -680,9 +682,11 @@ func (g *Generator) SetPackageNames() {
 		"proto": "proto",
 		"json": "json",
     "errors": "errors",
+		"bytes": "bytes",
 	}
 	if g.generateOldProtoCompat {
 		g.Pkg["oldstyleproto"] = "oldstyleproto"
+		g.Pkg["oldprotolib"] = "oldprotolib"
 	}
 }
 
@@ -1185,11 +1189,6 @@ func (g *Generator) generate(file *FileDescriptor) {
 		g.generateExtension(ext)
 	}
 	g.generateInitFunction()
-	if g.generateOldProtoCompat {
-		// Generate an init function that register the messages containing
-		// one_of or map for conversion to old style protobufs.
-		g.generateOldStyleProtoRegistrationFunction()
-	}
 
 	// Run the plugins before the imports so we know which imports are necessary.
 	g.runPlugins(file)
@@ -1333,10 +1332,17 @@ func (g *Generator) generateImports() {
 	g.P("import " + g.Pkg["math"] + ` "math"`)
   g.P("import " + g.Pkg["json"] + ` "encoding/json"`)
   g.P("import " + g.Pkg["errors"] + ` "errors"`)
-	if g.generateOldProtoCompat {
+	// Checking for foundMessagesWithMapsOrOneOf works because imports are
+	// generated last after all the other message generation.
+	if g.foundMessagesWithMapsOrOneOf {
+		// Reset to false so that we won't pollute state when generating the
+		// next file.
+		g.foundMessagesWithMapsOrOneOf = false
 		g.P(
 			"import " + g.Pkg["oldstyleproto"] + strconv.Quote(
 				InferPackagePathForOldStyleProto(g.genFiles[0])))
+		g.P("import " + g.Pkg["oldprotolib"] + " " +strconv.Quote(
+			"oldcode.google.com/p/goprotobuf/proto"))
 	}
 
 	var (
@@ -1389,7 +1395,6 @@ func (g *Generator) generateImports() {
 	g.P("var _ = ", g.Pkg["fmt"], ".Errorf")
 	g.P("var _ = ", g.Pkg["math"], ".Inf")
 	g.P("var _ = ", g.Pkg["errors"], ".New(\"\")")
-	g.P()
 }
 
 func (g *Generator) generateImported(id *ImportedDescriptor) {
@@ -1518,7 +1523,7 @@ func (g *Generator) generateEnum(enum *EnumDescriptor) {
 
 	g.P()
 
-        // We want to generate MarshalJSON if comments contain following tag
+  // We want to generate MarshalJSON if comments contain following tag
 	// "enum: ". go-protobuf does not generate MarshalJSON for enum. Therefore,
 	// enum values get marshalled into int32 (which is the type for the enum).
 	// In order to marshal values into readable string, we need to generate
@@ -2003,8 +2008,53 @@ func (g *Generator) generateMessage(message *Descriptor) {
 	g.P("func (m *", ccTypeName, ") String() string { return ", g.Pkg["proto"], ".CompactTextString(m) }")
 	g.P("func (*", ccTypeName, ") ProtoMessage() {}")
 	if g.generateOldProtoCompat {
-		g.P(
-			"func (*", ccTypeName, ") OldStyleCompatSupported() bool {return true}")
+		hasOneOfOrMapField := func() bool {
+			for _, nested := range message.nested {
+				if nested.Options != nil && nested.Options.MapEntry != nil &&
+					*nested.Options.MapEntry {
+					return true
+				}
+			}
+
+			for _, field := range message.Field {
+				if field.OneofIndex != nil {
+					return true
+				}
+			}
+
+			return false
+		}()
+
+		if hasOneOfOrMapField {
+			g.foundMessagesWithMapsOrOneOf = true
+
+			g.P("// Custom MarshalJson and UnmarshalJson methods to preserve")
+			g.P("// compatibility with old style protobufs. This is done only ")
+			g.P("// for messages with one_of or map fields, and protos that ")
+			g.P("// that existed before goprotobuf upgrade.")
+			g.P("func (x *", ccTypeName, ") MarshalJSON()([]byte, error) {")
+			g.In()
+			g.P("binaryData, err := proto.Marshal(x)")
+			g.P("if err != nil { return nil, err }")
+			g.P("oldMsg := &oldstyleproto."+ccTypeName+"{}")
+			g.P("err = oldprotolib.Unmarshal(binaryData, oldMsg)")
+			g.P("if err != nil { return nil, err }")
+			g.P("return json.Marshal(oldMsg)")
+			g.Out()
+			g.P("}")
+
+			g.P("func (x *", ccTypeName, ") UnmarshalJSON(data []byte) error {")
+			g.In()
+			g.P("oldMsg := &oldstyleproto."+ccTypeName+"{}")
+			g.P("err := json.Unmarshal(data, oldMsg)")
+			g.P("if err != nil { return err }")
+			g.P("binaryData, err := oldprotolib.Marshal(oldMsg)")
+			g.P("if err != nil { return err }")
+			g.P("err = proto.Unmarshal(binaryData, x)")
+			g.P("return err")
+			g.Out()
+			g.P("}")
+		}
 	}
 	var indexes []string
 	for m := message; m != nil; m = m.parent {
@@ -2810,13 +2860,6 @@ func (g *Generator) generateExtension(ext *ExtensionDescriptor) {
 	}
 
 	g.file.addExport(ext, constOrVarSymbol{ccTypeName, "var", ""})
-}
-
-func (g *Generator) generateOldStyleProtoRegistrationFunction() {
-	g.P("func init() {")
-	g.In()
-	g.P("oldstyleproto.InitCohesityOldStyleProtoCompatMapEntries()")
-	g.P("}")
 }
 
 func (g *Generator) generateInitFunction() {
