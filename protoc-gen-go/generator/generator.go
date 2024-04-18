@@ -1859,7 +1859,14 @@ func (g *Generator) generateMessage(message *Descriptor) {
 		ns := allocNames(base, "Get"+base)
 		fieldName, fieldGetterName := ns[0], ns[1]
 		typename, wiretype := g.GoType(message, field)
-		jsonName := makeFirstLetterLowerCase(fieldName)
+		jsonName := *field.Name
+                // Generate camel case names for json tags only if backwards
+                // compatibility with old goprotobuf is needed (ex: iris V1
+                // API). The newer versions of protobuf generate json tags
+                // in camel case.
+                if g.generateOldProtoCompat {
+	          jsonName = makeFirstLetterLowerCase(fieldName)
+                }
 		tag := fmt.Sprintf("protobuf:%s json:%q", g.goTag(message, field, wiretype), jsonName+",omitempty")
 
 		fieldNames[field] = fieldName
